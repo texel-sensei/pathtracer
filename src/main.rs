@@ -1,108 +1,19 @@
 use std::fs;
+use std::rc::Rc;
 use std::io::prelude::*;
-use std::ops::{Add, Sub, Neg, Div, Mul};
 
-struct Vec3 {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-}
+use pathtracer::math::*;
+use pathtracer::shapes::sphere::Sphere;
 
-impl Vec3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Vec3{x, y, z}
-    }
 
-    pub fn length_sqr(&self) -> f32 {
-        self.dot(&self)
-    }
+trait Material {
+    fn sample(&self, hit_info: &Hit, incomming: &Ray) -> Vec3;
+    fn total_emission(&self, sampled_color: Vec3) -> Vec3; }
 
-    #[allow(dead_code)]
-    pub fn length(&self) -> f32 {
-        self.length_sqr().sqrt()
-    }
 
-    pub fn normalized(self) -> Vec3 {
-        return self / self.length_sqr()
-    }
-
-    pub fn dot(&self, other: &Vec3) -> f32{
-        self.x * other.x + self.y * other.y + self.z * other.z
-    }
-}
-
-impl Clone for Vec3 {
-    fn clone(&self) -> Self {
-        Vec3::new(self.x, self.y, self.z)
-    }
-}
-impl Copy for Vec3 {}
-
-impl Neg for Vec3 {
-   type Output = Self;
-
-   fn neg(self) -> Self {
-       Vec3::new(-self.x, -self.y, -self.z)
-   }
-}
-
-impl Add for Vec3 {
-    type Output = Self;
-
-    fn add(self, other: Vec3) -> Self {
-        Vec3::new(
-            self.x + other.x,
-            self.y + other.y,
-            self.z + other.z,
-        )
-    }
-}
-
-impl Sub for Vec3 {
-    type Output = Self;
-
-    fn sub(self, other: Vec3) -> Self {
-       self + (-other)
-    }
-}
-
-impl Mul<f32> for Vec3 {
-    type Output = Self;
-
-    fn mul(self, other: f32) -> Self {
-        Vec3::new(self.x*other, self.y*other, self.z*other)
-    }
-}
-impl Div<f32> for Vec3 {
-    type Output = Self;
-
-    fn div(self, other: f32) -> Self {
-        Vec3::new(self.x/other, self.y/other, self.z/other)
-    }
-}
-impl Div for Vec3 {
-    type Output = Self;
-
-    fn div(self, other: Vec3) -> Self {
-        Vec3::new(self.x/other.x, self.y/other.y, self.z/other.z)
-    }
-}
-
-struct Sphere {
-    pub pos: Vec3,
-    pub radius: f32,
-}
-
-struct Ray {
-    pub start: Vec3,
-    pub dir: Vec3,
-}
-
-struct IntersectionInfo {
-    pub hitpoint: Vec3,
-    pub normal: Vec3,
-    pub point_on_ray: f32,
-    pub inside: bool,
+struct IntersectionInfo<'a> {
+    pub hit: Hit,
+    pub material: &'a Material,
 }
 
 struct Camera {
@@ -124,13 +35,12 @@ impl Camera {
     }
 
     pub fn generate_ray(&self, pix: (u32, u32)) -> Ray {
-        let mut screen_size = (self.screen.1 - self.screen.0) / Vec3::new(self.res.0 as f32, self.res.1 as f32, 1.);
-        screen_size.x *= pix.0 as f32;
-        screen_size.y *= pix.1 as f32;
+        let screen_size = self.screen.1 - self.screen.0;
+        let mult = Vec3::new(pix.0 as f32, pix.1 as f32, 1.) / Vec3::new(self.res.0 as f32, self.res.1 as f32, 1.);
 
         Ray{
             start: self.pos,
-            dir: (self.screen.0 + screen_size - self.pos).normalized()
+            dir: ((self.screen.0 + screen_size*mult) - self.pos).normalized()
         }
     }
 }
@@ -139,35 +49,28 @@ trait Primitive {
     fn intersect(&self, ray: &Ray) -> Option<IntersectionInfo>;
 }
 
-impl Primitive for Sphere {
+struct SpherePrimitive {
+    collider: Sphere,
+    material: Rc::<Material>,
+}
+
+impl Primitive for SpherePrimitive {
     fn intersect(&self, ray: &Ray) -> Option<IntersectionInfo> {
-        let rr = self.radius.powi(2);
-        let l = self.pos - ray.start;
-        let ll = l.dot(&l);
-        let s = l.dot(&ray.dir);
-
-        if s < 0. && ll > rr {
-            return None;
-        }
-
-        let mm = ll - s*s;
-        if mm > rr {
-            return None;
-        }
-
-        let u = (ll-rr).signum();
-        let t = s - (rr - mm).sqrt() * u;
-
-        if t < 0. {
-            return None;
-        }
-        let p = ray.start + ray.dir*t;
-        Some(IntersectionInfo{
-            hitpoint: p,
-            normal: (p - self.pos).normalized(),
-            point_on_ray: t,
-            inside: u<=0.
+        self.collider.intersect(ray).map(|hit|{
+            IntersectionInfo{hit: hit, material: self.material.as_ref()}
         })
+    }
+}
+
+impl Material for Vec3 {
+    fn sample(&self, hit_info: &Hit, _incomming: &Ray) -> Vec3 {
+        let light_dir = Vec3::new(1., 1., 1.).normalized();
+        let color = self * (-light_dir).dot(&hit_info.normal).max(0.);
+        color
+        //hit_info.normal
+    }
+    fn total_emission(&self, sampled_color: Vec3) -> Vec3 {
+        return sampled_color;
     }
 }
 
@@ -191,16 +94,18 @@ fn fill_color(image: &mut [u8], pixel: (u32, u32), res: (u32, u32), color: &Vec3
 }
 
 fn main() {
-    let cam = Camera::new(Vec3::new(0.,0.,-1.), (256, 256), (1., 1.));
-
-    let scene = vec![
-        Sphere{pos: Vec3::new(0., 0., 2.), radius: 1.0},
-        Sphere{pos: Vec3::new(0.4, 0., 2.), radius: 0.9},
-    ];
+    let cam = Camera::new(Vec3::new(0.,0.,-2.0), (256, 256), (1., 1.));
 
     let materials = vec![
-        Vec3::new(1., 0., 0.),
-        Vec3::new(0., 1., 0.),
+        Rc::new(Vec3::new(1., 0., 0.)),
+        Rc::new(Vec3::new(0., 1., 0.)),
+        Rc::new(Vec3::new(0., 0., 1.)),
+    ];
+
+    let scene = vec![
+        SpherePrimitive{collider: Sphere::new(Vec3::new(-0.45, 0., 0.5), 0.4), material: materials[0].clone()},
+        SpherePrimitive{collider: Sphere::new(Vec3::new(0.45, 0., 0.5), 0.4), material: materials[1].clone()},
+        SpherePrimitive{collider: Sphere::new(Vec3::new(0., 0.45, 0.5), 0.4), material: materials[2].clone()},
     ];
 
 
@@ -212,28 +117,25 @@ fn main() {
             let ray = cam.generate_ray((x,y));
 
             let mut hit: Option<IntersectionInfo> = None;
-            let mut mat: Option<Vec3> = None;
 
             for i in 0..scene.len() {
                 let s = &scene[i];
                 if let Some(info) = s.intersect(&ray) {
                     match &hit {
-                        None => {hit = Some(info); mat = Some(materials[i])},
+                        None => {hit = Some(info);},
                         Some(prev_hit) => {
-                            if info.point_on_ray < prev_hit.point_on_ray {
+                            if info.hit.point_on_ray < prev_hit.hit.point_on_ray {
                                 hit = Some(info);
-                                mat = Some(materials[i]);
                             }
                         }
                     }
                 }
             }
             if let Some(info) = hit {
-                if info.inside {
+                if info.hit.inside {
                     continue;
                 }
-                let base_color = mat.unwrap();
-                let color = base_color * (-ray.dir).dot(&info.normal);
+                let color = info.material.sample(&info.hit, &ray);
                 fill_color(&mut data, (x,y), cam.res, &color);
             }
         }
