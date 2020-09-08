@@ -3,11 +3,13 @@ use std::f32::consts::PI;
 
 use pathtracer::io;
 use pathtracer::math::*;
-use pathtracer::shapes::sphere::Sphere;
+use pathtracer::shapes::{sphere::Sphere, plane::Plane};
 
+const MAX_DEPTH: i32 = 2;
+const NUM_SAMPLES: i32 = 5;
 
 trait Material {
-    fn sample(&self, hit_info: &Hit, incomming: &Ray, integrator: &Integrator) -> Vec3;
+    fn sample(&self, hit_info: &Hit, incomming: &Ray, integrator: &Integrator, depth: i32) -> Vec3;
     fn total_emission(&self, sampled_color: Vec3) -> Vec3; }
 
 
@@ -89,6 +91,19 @@ impl Primitive for SpherePrimitive {
     }
 }
 
+struct PlanePrimitive {
+    collider: Plane,
+    material: Rc::<Material>,
+}
+
+impl Primitive for PlanePrimitive {
+    fn intersect(&self, ray: &Ray) -> Option<IntersectionInfo> {
+        self.collider.intersect(ray).map(|hit|{
+            IntersectionInfo{hit: hit, material: self.material.as_ref()}
+        })
+    }
+}
+
 fn concentric_sample_disc(p: (f32, f32)) -> (f32, f32) {
     let mut p = p;
     p.0 = 2. * p.0 - 1.;
@@ -130,8 +145,11 @@ fn hemisphere_sample(n: &Vec3, p: (f32, f32)) -> Vec3 {
 }
 
 impl Material for Vec3 {
-    fn sample(&self, hit_info: &Hit, _incomming: &Ray, integrator: &Integrator) -> Vec3 {
-        let sample_x = 50;
+    fn sample(&self, hit_info: &Hit, _incomming: &Ray, integrator: &Integrator, depth: i32) -> Vec3 {
+        if depth >= MAX_DEPTH {
+            return Vec3::new(0., 0., 0.);
+        }
+        let sample_x = NUM_SAMPLES;
         let sample_y = sample_x;
 
         let start = hit_info.hitpoint + 0.001 * &hit_info.normal;
@@ -142,8 +160,9 @@ impl Material for Vec3 {
                 let p = (x as f32 / sample_x as f32, y as f32 / sample_y as f32);
                 let dir = hemisphere_sample(&hit_info.normal, p);
 
-                if let Some(hit) = integrator.send_ray(&Ray{start, dir}) {
-                    let light = hit.material.total_emission(Vec3::new(1., 1., 1.));
+                let sample_ray = &Ray{start, dir};
+                if let Some(hit) = integrator.send_ray(sample_ray) {
+                    let light = hit.material.sample(&hit.hit, sample_ray, integrator, depth+1);
                     let color = light * *self * dir.dot(&hit_info.normal).max(0.);
                     accumulator = accumulator + color;
                 }
@@ -171,7 +190,7 @@ struct EmissiveMaterial {
 }
 
 impl Material for EmissiveMaterial {
-    fn sample(&self, _hit_info: &Hit, _incomming: &Ray, _integrator: &Integrator) -> Vec3 {
+    fn sample(&self, _hit_info: &Hit, _incomming: &Ray, _integrator: &Integrator, _depth: i32) -> Vec3 {
         Vec3::new(1., 1., 1.)
     }
 
@@ -201,11 +220,13 @@ impl Scene {
 fn main() {
     let cam = Camera::new(Vec3::new(0.,0.,-2.0), (256, 256), (1., 1.));
 
+    let white = Rc::new(Vec3::new(1., 1., 1.));
+
     let materials: Vec::<Rc::<Material>> = vec![
         Rc::new(Vec3::new(1., 0., 0.)),
         Rc::new(Vec3::new(0., 1., 0.)),
         Rc::new(Vec3::new(0., 0., 1.)),
-        Rc::new(EmissiveMaterial{emissiveness: 100.}),
+        Rc::new(EmissiveMaterial{emissiveness: 1000.}),
     ];
 
     let mut scene = Scene::new();
@@ -223,6 +244,16 @@ fn main() {
         SpherePrimitive{collider: Sphere::new(Vec3::new(0., -0.25, 0.1), 0.1), material: materials[3].clone()}
     ));
 
+    scene.add_primitive(Box::new(
+        PlanePrimitive{collider: Plane::new(Vec3::new(0., -1., 0.), -0.75), material: white.clone()}
+    ));
+    scene.add_primitive(Box::new(
+        PlanePrimitive{collider: Plane::new(Vec3::new(0., 1., 0.), -0.75), material: white.clone()}
+    ));
+    scene.add_primitive(Box::new(
+        PlanePrimitive{collider: Plane::new(Vec3::new(0., 0., -1.), -3.), material: white.clone()}
+    ));
+
     let integrator = Integrator::new(&scene);
 
     let mut data = Vec::new();
@@ -238,7 +269,7 @@ fn main() {
                 if info.hit.inside {
                     continue;
                 }
-                let color = info.material.sample(&info.hit, &ray, &integrator);
+                let color = info.material.sample(&info.hit, &ray, &integrator, 0);
                 fill_color(&mut data, (x,y), cam.res, &color);
             }
         }

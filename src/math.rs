@@ -133,6 +133,10 @@ impl Ray {
 
         (compare_point - *other).length()
     }
+
+    pub fn walk(&self, t: f32) -> Vec3 {
+        self.start + t * &self.dir
+    }
 }
 
 pub struct Hit {
