@@ -253,6 +253,15 @@ fn main() {
     scene.add_primitive(Box::new(
         PlanePrimitive{collider: Plane::new(Vec3::new(0., 0., -1.), -3.), material: white.clone()}
     ));
+    scene.add_primitive(Box::new(
+        PlanePrimitive{collider: Plane::new(Vec3::new(0., 0., 1.), -3.), material: white.clone()}
+    ));
+    scene.add_primitive(Box::new(
+        PlanePrimitive{collider: Plane::new(Vec3::new(1., 0., 0.), -0.75), material: white.clone()}
+    ));
+    scene.add_primitive(Box::new(
+        PlanePrimitive{collider: Plane::new(Vec3::new(-1., 0., 0.), -0.75), material: white.clone()}
+    ));
 
     let integrator = Integrator::new(&scene);
 
