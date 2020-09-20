@@ -40,7 +40,7 @@ impl Camera {
         let mult = Vec3::new(pix.0 as f32, pix.1 as f32, 1.) / Vec3::new(self.res.0 as f32, self.res.1 as f32, 1.);
 
         Ray{
-            start: self.pos,
+            origin: self.pos,
             dir: ((self.screen.0 + screen_size*mult) - self.pos).normalized()
         }
     }
@@ -122,14 +122,14 @@ fn concentric_sample_disc(p: (f32, f32)) -> (f32, f32) {
     (r * theta.cos(), r * theta.sin())
 }
 
-fn cosine_sample_hemisphere(p: (f32, f32)) -> Vec3 {
+fn cosine_sample_hemisphere(p: (f32, f32)) -> Norm3 {
     let p = concentric_sample_disc(p);
     let z = (1. - p.0*p.0 - p.1*p.1).max(0.).sqrt();
 
-    Vec3::new(p.0, p.1, z)
+    Norm3::new(p.0, p.1, z)
 }
 
-fn hemisphere_sample(n: &Vec3, p: (f32, f32)) -> Vec3 {
+fn hemisphere_sample(n: &Norm3, p: (f32, f32)) -> Norm3 {
     // build orthonormal basis
     let xx = if n.dot(&Vec3::new(1., 0., 0.)).abs() > 0.9999 {
         Vec3::new(0., 1., 0.)
@@ -141,7 +141,7 @@ fn hemisphere_sample(n: &Vec3, p: (f32, f32)) -> Vec3 {
 
     let s = cosine_sample_hemisphere(p);
 
-    xx * s.x + yy * s.y + zz * s.z
+    (xx * s.x() + yy * s.y() + zz * s.z()).normalized()
 }
 
 impl Material for Vec3 {
@@ -152,7 +152,7 @@ impl Material for Vec3 {
         let sample_x = NUM_SAMPLES;
         let sample_y = sample_x;
 
-        let start = hit_info.hitpoint + 0.001 * &hit_info.normal;
+        let origin = hit_info.hitpoint + 0.001 * &hit_info.normal;
 
         let mut accumulator = Vec3::new(0., 0., 0.);
         for x in 0..=sample_x {
@@ -160,7 +160,7 @@ impl Material for Vec3 {
                 let p = (x as f32 / sample_x as f32, y as f32 / sample_y as f32);
                 let dir = hemisphere_sample(&hit_info.normal, p);
 
-                let sample_ray = &Ray{start, dir};
+                let sample_ray = &Ray{origin, dir};
                 if let Some(hit) = integrator.send_ray(sample_ray) {
                     let light = hit.material.sample(&hit.hit, sample_ray, integrator, depth+1);
                     let color = light * *self * dir.dot(&hit_info.normal).max(0.);
@@ -245,22 +245,22 @@ fn main() {
     ));
 
     scene.add_primitive(Box::new(
-        PlanePrimitive{collider: Plane::new(Vec3::new(0., -1., 0.), -0.75), material: white.clone()}
+        PlanePrimitive{collider: Plane::new(Norm3::new(0., -1., 0.), -0.75), material: white.clone()}
     ));
     scene.add_primitive(Box::new(
-        PlanePrimitive{collider: Plane::new(Vec3::new(0., 1., 0.), -0.75), material: white.clone()}
+        PlanePrimitive{collider: Plane::new(Norm3::new(0., 1., 0.), -0.75), material: white.clone()}
     ));
     scene.add_primitive(Box::new(
-        PlanePrimitive{collider: Plane::new(Vec3::new(0., 0., -1.), -3.), material: white.clone()}
+        PlanePrimitive{collider: Plane::new(Norm3::new(0., 0., -1.), -3.), material: white.clone()}
     ));
     scene.add_primitive(Box::new(
-        PlanePrimitive{collider: Plane::new(Vec3::new(0., 0., 1.), -3.), material: white.clone()}
+        PlanePrimitive{collider: Plane::new(Norm3::new(0., 0., 1.), -3.), material: white.clone()}
     ));
     scene.add_primitive(Box::new(
-        PlanePrimitive{collider: Plane::new(Vec3::new(1., 0., 0.), -0.75), material: white.clone()}
+        PlanePrimitive{collider: Plane::new(Norm3::new(1., 0., 0.), -0.75), material: white.clone()}
     ));
     scene.add_primitive(Box::new(
-        PlanePrimitive{collider: Plane::new(Vec3::new(-1., 0., 0.), -0.75), material: white.clone()}
+        PlanePrimitive{collider: Plane::new(Norm3::new(-1., 0., 0.), -0.75), material: white.clone()}
     ));
 
     let integrator = Integrator::new(&scene);

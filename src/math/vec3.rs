@@ -1,4 +1,5 @@
 use std::ops::{Add, Sub, Neg, Div, Mul};
+use super::{Object3D, Norm3};
 
 pub struct Vec3 {
     pub x: f32,
@@ -12,29 +13,35 @@ impl Vec3 {
     }
 
     pub fn length_sqr(&self) -> f32 {
-        self.dot(&self)
+        self.dot(self)
     }
 
-    #[allow(dead_code)]
     pub fn length(&self) -> f32 {
         self.length_sqr().sqrt()
     }
 
-    pub fn normalized(self) -> Vec3 {
-        return self / self.length()
+    pub fn normalized(self) -> Norm3 {
+        let tmp = self / self.length();
+        Norm3::new(tmp.x, tmp.y, tmp.z)
     }
 
-    pub fn dot(&self, other: &Vec3) -> f32{
-        self.x * other.x + self.y * other.y + self.z * other.z
+    pub fn dot(&self, other: &Object3D) -> f32{
+        self.x * other.x() + self.y * other.y() + self.z * other.z()
     }
 
-    pub fn cross(&self, other: &Vec3) -> Vec3 {
+    pub fn cross(&self, other: &Object3D) -> Vec3 {
         Vec3::new(
-            self.y*other.z - self.z*other.y,
-            self.z*other.x - self.x*other.z,
-            self.x*other.y - self.y*other.x
+            self.y*other.z() - self.z*other.y(),
+            self.z*other.x() - self.x*other.z(),
+            self.x*other.y() - self.y*other.x()
         )
     }
+}
+
+impl Object3D for Vec3 {
+    fn x(&self) -> f32 { self.x }
+    fn y(&self) -> f32 { self.y }
+    fn z(&self) -> f32 { self.z }
 }
 
 impl Clone for Vec3 {
@@ -118,30 +125,4 @@ impl Div for Vec3 {
     fn div(self, other: Vec3) -> Self {
         Vec3::new(self.x/other.x, self.y/other.y, self.z/other.z)
     }
-}
-
-pub struct Ray {
-    pub start: Vec3,
-    pub dir: Vec3,
-}
-
-impl Ray {
-    pub fn distance_to(&self, other: &Vec3) -> f32 {
-        let d = *other - self.start;
-        let projection = self.start.dot(&d) * &d / d.length();
-        let compare_point = self.start + projection;
-
-        (compare_point - *other).length()
-    }
-
-    pub fn walk(&self, t: f32) -> Vec3 {
-        self.start + t * &self.dir
-    }
-}
-
-pub struct Hit {
-    pub hitpoint: Vec3,
-    pub normal: Vec3,
-    pub point_on_ray: f32,
-    pub inside: bool,
 }

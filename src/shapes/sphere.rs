@@ -12,7 +12,7 @@ impl Sphere {
     }
 
     pub fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        let l = self.pos - ray.start;
+        let l = self.pos - ray.origin;
         let tca = l.dot(&ray.dir);
 
         if tca < 0. {
@@ -43,7 +43,7 @@ impl Sphere {
 
         let t = t0;
 
-        let hitpoint = ray.start + t * &ray.dir;
+        let hitpoint = ray.origin + t * &ray.dir;
         let normal = (hitpoint - self.pos).normalized();
 
         Some(Hit{
